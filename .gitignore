@@ -1,0 +1,29 @@
+# --- Entorno Virtual ---
+rag_venv/
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# --- Base de Datos (Qdrant) ---
+qdrant_storage/
+
+vector_service/db/
+*.sqlite3
+
+# --- Documentos y Temporales ---
+*.pdf
+*.txt
+*.md
+/tmp/
+data/
+uploads/
+
+# --- Logs y Sistema ---
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# --- Seguridad ---
+.env
