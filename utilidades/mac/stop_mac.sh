@@ -27,3 +27,4 @@ brew services stop ollama
 
 echo ""
 echo "Sistema RAG apagado."
+

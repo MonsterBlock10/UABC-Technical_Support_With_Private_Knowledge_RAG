@@ -86,3 +86,50 @@ sleep 3
 echo ""
 echo "Sistema RAG levantado. Verificando health..."
 curl -s http://localhost:5000/health | python3 -m json.tool
+
+
+echo ""
+echo "Ingestando documentos de docs/..."
+for file in "$PROJECT_DIR/docs/"*; do
+    ext="${file##*.}"
+    if [[ "$ext" == "txt" || "$ext" == "md" || "$ext" == "pdf" ]]; then
+        filename=$(basename "$file")
+        response=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST http://localhost:5000/ingest \
+            -F "file=@$file")
+        if [ "$response" == "200" ]; then
+            echo "  Ingestado: $filename"
+        else
+            echo "  Error al ingestar: $filename (HTTP $response)"
+        fi
+    fi
+done
+
+echo ""
+echo "Sistema listo. Escribe tu pregunta o 'salir' para terminar."
+echo "Modelo actual: fast (gemma2:2b). Escribe 'quality' para cambiar."
+echo ""
+
+MODEL="fast"
+while true; do
+    read -p "Pregunta: " input
+
+    if [ "$input" == "salir" ]; then
+        echo ""
+        echo "Cerrando sesion de preguntas."
+        break
+    elif [ "$input" == "fast" ] || [ "$input" == "quality" ]; then
+        MODEL="$input"
+        echo "  Modelo cambiado a: $MODEL"
+        continue
+    elif [ -z "$input" ]; then
+        continue
+    fi
+
+    echo ""
+    curl -s -X POST http://localhost:5000/query \
+        -H "Content-Type: application/json" \
+        -d "{\"question\": \"$input\", \"model\": \"$MODEL\"}" \
+        | python3 -c "import sys,json; r=json.load(sys.stdin); print('Respuesta:', r.get('answer','Error')); print('Fuentes:', ', '.join(r.get('fuentes',[])))"
+    echo ""
+done

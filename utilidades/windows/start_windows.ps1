@@ -99,3 +99,56 @@ Write-Host ""
 Write-Host "Sistema RAG levantado. Verificando health..."
 $response = Invoke-RestMethod -Uri "http://localhost:5000/health"
 $response | ConvertTo-Json
+
+
+Write-Host ""
+Write-Host "Ingestando documentos de docs/..."
+$docsPath = "$PROJECT_DIR\docs"
+$extensions = @("txt", "md", "pdf")
+
+foreach ($file in Get-ChildItem -Path $docsPath -File) {
+    if ($extensions -contains $file.Extension.TrimStart(".").ToLower()) {
+        $response = curl -s -o NUL -w "%{http_code}" `
+            -X POST http://localhost:5000/ingest `
+            -F "file=@$($file.FullName)"
+        if ($response -eq "200") {
+            Write-Host "  Ingestado: $($file.Name)"
+        } else {
+            Write-Host "  Error al ingestar: $($file.Name) (HTTP $response)"
+        }
+    }
+}
+
+
+Write-Host ""
+Write-Host "Sistema listo. Escribe tu pregunta o 'salir' para terminar."
+Write-Host "Modelo actual: fast (gemma2:2b). Escribe 'quality' para cambiar."
+Write-Host ""
+
+$MODEL = "fast"
+while ($true) {
+    $input = Read-Host "Pregunta"
+
+    if ($input -eq "salir") {
+
+        Write-Host ""
+        Write-Host "Cerrando..."
+        break
+    } elseif ($input -eq "fast" -or $input -eq "quality") {
+        $MODEL = $input
+        Write-Host "  Modelo cambiado a: $MODEL"
+        continue
+    } elseif ([string]::IsNullOrWhiteSpace($input)) {
+        continue
+    }
+
+    Write-Host ""
+    $body = "{`"question`": `"$input`", `"model`": `"$MODEL`"}"
+    $response = Invoke-RestMethod -Uri "http://localhost:5000/query" `
+        -Method POST `
+        -ContentType "application/json" `
+        -Body $body
+    Write-Host "Respuesta: $($response.answer)"
+    Write-Host "Fuentes: $($response.fuentes -join ', ')"
+    Write-Host ""
+}
