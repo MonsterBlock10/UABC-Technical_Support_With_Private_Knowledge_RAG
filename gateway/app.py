@@ -62,11 +62,14 @@ def query():
     llm_resp.raise_for_status()
     answer = llm_resp.json()["response"]
 
+
+    mejor_chunk = max(chunks, key=lambda c: c["score"])
+
     return jsonify({
         "question": question,
         "answer": answer,
         "model": model,
-        "fuentes": list({c["source"] for c in chunks})
+        "fuentes": [mejor_chunk["source"]]
     })
 
 
