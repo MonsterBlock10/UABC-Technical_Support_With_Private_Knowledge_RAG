@@ -13,6 +13,21 @@ Sistema de Recuperación Aumentada por Generación (RAG) distribuido para consul
 
 ---
 
+## Instalación de Ollama
+
+**Linux** — se instala automáticamente al correr el script de inicio.
+
+**macOS:**
+```bash
+brew install ollama
+```
+O descarga el instalador desde: https://ollama.com/download
+
+**Windows:**
+Descarga e instala el `.exe` desde: https://ollama.com/download
+
+El script de inicio verificará si Ollama está instalado antes de continuar.
+
 ## Instalación
 
 ### 1. Clonar el repositorio
