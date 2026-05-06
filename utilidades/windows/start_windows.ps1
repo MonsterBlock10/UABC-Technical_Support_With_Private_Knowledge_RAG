@@ -1,154 +1,127 @@
-# utilidades/windows/start_windows.ps1
+$PROJECT_DIR = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$VENV_PATH   = Join-Path $PROJECT_DIR "rag_venv\Scripts\Activate.ps1"
+$LOG_DIR     = Join-Path $PROJECT_DIR "utilidades\logs"
+$REQ_FILE    = Join-Path $PROJECT_DIR "utilidades\requirements.txt"
+$DOCS_PATH   = Join-Path $PROJECT_DIR "docs" 
 
-$PROJECT_DIR = "$env:USERPROFILE\Documents\Tareas\Sistemas-Distribuidos\Proyecto"
-$VENV        = "$PROJECT_DIR\rag_venv\Scripts\Activate.ps1"
-$LOG_DIR     = "$PROJECT_DIR\utilidades\logs"
+if (-not (Test-Path $LOG_DIR)) { New-Item -ItemType Directory -Path $LOG_DIR | Out-Null }
 
-New-Item -ItemType Directory -Force -Path $LOG_DIR | Out-Null
+Write-Host "`n--- Iniciando Sistema desde: $PROJECT_DIR ---" -ForegroundColor Cyan
 
-Write-Host "Verificando dependencias Python..."
-& "$VENV"
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    Write-Host "  [!] Docker no encontrado. Por favor abre Docker Desktop." -ForegroundColor Red
+    exit 1
+}
 
-$requirements = Get-Content "$PROJECT_DIR\utilidades\requirements.txt"
-$missing = $false
+if (-not (Test-Path $VENV_PATH)) {
+    Write-Host "  Creando entorno virtual..." -ForegroundColor Yellow
+    Set-Location $PROJECT_DIR
+    python -m venv rag_venv
+}
+& "$VENV_PATH"
+Write-Host "  Verificando dependencias..."
+pip install -r "$REQ_FILE" --quiet
 
-foreach ($line in $requirements) {
-    if ($line -match "^#" -or [string]::IsNullOrWhiteSpace($line)) { continue }
-    $pkg     = ($line -split "==")[0].ToLower()
-    $version = ($line -split "==")[1]
-    $info    = pip show $pkg 2>&1
-    $installedLine = $info | Where-Object { $_ -match "^Version:" }
-    $installed = if ($installedLine) { ($installedLine -split " ")[1] } else { $null }
+Write-Host "`nLevantando Qdrant..."
+Set-Location $PROJECT_DIR
+docker compose up -d --force-recreate
+Start-Sleep -Seconds 5
 
-    if (-not $installed) {
-        Write-Host "  Falta: $pkg"
-        $missing = $true
-    } elseif ($installed -ne $version) {
-        Write-Host "  Version incorrecta: $pkg (instalado $installed, requerido $version)"
-        $missing = $true
+$services = @(
+    @{ name = "vector_service"; port = 5001 },
+    @{ name = "llm_service";    port = 5002 },
+    @{ name = "gateway";        port = 5000 }
+)
+$processIds = @()
+
+foreach ($svc in $services) {
+    Write-Host "Iniciando $($svc.name)..."
+    $proc = Start-Process "python" -ArgumentList "app.py" `
+        -WorkingDirectory (Join-Path $PROJECT_DIR $svc.name) `
+        -RedirectStandardOutput (Join-Path $LOG_DIR "$($svc.name).log") `
+        -RedirectStandardError (Join-Path $LOG_DIR "$($svc.name)_error.log") `
+        -WindowStyle Hidden -PassThru
+    
+    $processIds += $proc.Id
+    Start-Sleep -Seconds 3 # Pequeña pausa entre inicios
+}
+
+Write-Host "`nVerificando estabilidad del sistema..." -ForegroundColor Cyan
+$maxRetries = 6
+$ready = $false
+
+for ($i = 1; $i -le $maxRetries; $i++) {
+    try {
+        Write-Host "  Intento $i de $maxRetries... " -NoNewline
+        $resp = Invoke-RestMethod -Uri "http://127.0.0.1:5000/health" -TimeoutSec 10
+        if ($resp.status -eq "ok") {
+            Write-Host "¡ONLINE!" -ForegroundColor Green
+            $ready = $true
+            break
+        }
+    } catch {
+        Write-Host "esperando..." -ForegroundColor Gray
+        Start-Sleep -Seconds 10
     }
 }
 
-if ($missing) {
-    Write-Host "  Instalando dependencias faltantes..."
-    pip install -r "$PROJECT_DIR\utilidades\requirements.txt"
-    Write-Host "  Dependencias instaladas"
-} else {
-    Write-Host "  Todas las dependencias estan presentes"
-}
-
-Write-Host ""
-Write-Host "Verificando Ollama..."
-$ollamaPath = Get-Command ollama -ErrorAction SilentlyContinue
-
-if (-not $ollamaPath) {
-    Write-Host "  Ollama no encontrado."
-    Write-Host "  Descarga e instala Ollama desde: https://ollama.com/download"
-    Write-Host "  Luego vuelve a ejecutar este script."
-    exit 1
-} else {
-    Write-Host "  Ollama ya esta instalado"
-}
-
-$models = ollama list
-if ($models -notmatch "gemma2:2b") {
-    Write-Host "  Descargando gemma2:2b..."
-    ollama pull gemma2:2b
-    Write-Host "  gemma2:2b descargado"
-} else {
-    Write-Host "  gemma2:2b ya esta disponible"
-}
-
-Write-Host ""
-Write-Host "Iniciando Ollama..."
-Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden
-Start-Sleep -Seconds 3
-
-Write-Host ""
-Write-Host "Levantando Qdrant..."
-Set-Location $PROJECT_DIR
-docker compose up -d
-Start-Sleep -Seconds 2
-
-Write-Host ""
-Write-Host "Iniciando Vector Service..."
-$vs = Start-Process "python" -ArgumentList "app.py" `
-    -WorkingDirectory "$PROJECT_DIR\vector_service" `
-    -RedirectStandardOutput "$LOG_DIR\vector_service.log" `
-    -WindowStyle Hidden -PassThru
-$vs.Id | Out-File "$LOG_DIR\vector_service.pid"
-Start-Sleep -Seconds 4
-
-Write-Host "Iniciando LLM Service..."
-$llm = Start-Process "python" -ArgumentList "app.py" `
-    -WorkingDirectory "$PROJECT_DIR\llm_service" `
-    -RedirectStandardOutput "$LOG_DIR\llm_service.log" `
-    -WindowStyle Hidden -PassThru
-$llm.Id | Out-File "$LOG_DIR\llm_service.pid"
-Start-Sleep -Seconds 2
-
-Write-Host "Iniciando Gateway..."
-$gw = Start-Process "python" -ArgumentList "app.py" `
-    -WorkingDirectory "$PROJECT_DIR\gateway" `
-    -RedirectStandardOutput "$LOG_DIR\gateway.log" `
-    -WindowStyle Hidden -PassThru
-$gw.Id | Out-File "$LOG_DIR\gateway.pid"
-Start-Sleep -Seconds 3
-
-Write-Host ""
-Write-Host "Sistema RAG levantado. Verificando health..."
-$response = Invoke-RestMethod -Uri "http://localhost:5000/health"
-$response | ConvertTo-Json
-
-
-Write-Host ""
-Write-Host "Ingestando documentos de docs/..."
-$docsPath = "$PROJECT_DIR\docs"
-$extensions = @("txt", "md", "pdf")
-
-foreach ($file in Get-ChildItem -Path $docsPath -File) {
-    if ($extensions -contains $file.Extension.TrimStart(".").ToLower()) {
-        $response = curl -s -o NUL -w "%{http_code}" `
-            -X POST http://localhost:5000/ingest `
-            -F "file=@$($file.FullName)"
-        if ($response -eq "200") {
-            Write-Host "  Ingestado: $($file.Name)"
-        } else {
-            Write-Host "  Error al ingestar: $($file.Name) (HTTP $response)"
+Write-Host "`nIngestando documentos de $DOCS_PATH..."
+if (Test-Path $DOCS_PATH) {
+    Get-ChildItem -Path $DOCS_PATH -File | ForEach-Object {
+        if (".txt", ".md", ".pdf" -contains $_.Extension.ToLower()) {
+            # Usamos curl.exe nativo para evitar bloqueos de Invoke-RestMethod en archivos
+            $result = curl.exe -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:5000/ingest -F "file=@$($_.FullName)"
+            Write-Host "  [$result] $($_.Name)"
         }
     }
+} else {
+    Write-Host "  [!] Carpeta $DOCS_PATH no encontrada." -ForegroundColor Yellow
 }
 
-
-Write-Host ""
-Write-Host "Sistema listo. Escribe tu pregunta o 'salir' para terminar."
-Write-Host "Modelo actual: fast (gemma2:2b). Escribe 'quality' para cambiar."
-Write-Host ""
+Write-Host "`n===================================================="
+Write-Host "SISTEMA LISTO. Escribe 'salir' para terminar."
+Write-Host "====================================================`n"
 
 $MODEL = "fast"
 while ($true) {
-    $input = Read-Host "Pregunta"
-
-    if ($input -eq "salir") {
-
-        Write-Host ""
-        Write-Host "Cerrando..."
-        break
-    } elseif ($input -eq "fast" -or $input -eq "quality") {
-        $MODEL = $input
-        Write-Host "  Modelo cambiado a: $MODEL"
-        continue
-    } elseif ([string]::IsNullOrWhiteSpace($input)) {
+    $pregunta = Read-Host "Pregunta"
+    
+    if ($pregunta -eq "salir") { break }
+    if ($pregunta -eq "fast" -or $pregunta -eq "quality") {
+        $MODEL = $pregunta
+        Write-Host "  Modelo cambiado a: $MODEL" -ForegroundColor Cyan
         continue
     }
+    if ([string]::IsNullOrWhiteSpace($pregunta)) { continue }
 
-    Write-Host ""
-    $body = "{`"question`": `"$input`", `"model`": `"$MODEL`"}"
-    $response = Invoke-RestMethod -Uri "http://localhost:5000/query" `
-        -Method POST `
-        -ContentType "application/json" `
-        -Body $body
-    Write-Host "Respuesta: $($response.answer)"
-    Write-Host "Fuentes: $($response.fuentes -join ', ')"
-    Write-Host ""
+    try {
+        $body = @{ question = $pregunta; model = $MODEL } | ConvertTo-Json
+        
+        # TIMEOUT EXTENDIDO PARA OLLAMA (120 SEGUNDOS)
+        $res = Invoke-RestMethod -Uri "http://127.0.0.1:5000/query" `
+                                 -Method POST `
+                                 -ContentType "application/json" `
+                                 -Body $body `
+                                 -TimeoutSec 120
+        
+        Write-Host "`nRespuesta: " -ForegroundColor Green -NoNewline; Write-Host $res.answer
+        Write-Host "Fuentes: " -ForegroundColor Gray -NoNewline; Write-Host ($res.fuentes -join ", ") "`n"
+    } catch {
+        $msg = $_.Exception.Message
+        if ($msg -like "*time out*") {
+            Write-Host "`n[!] Error: El modelo está tardando mucho en cargar. Intenta de nuevo en 10 segundos." -ForegroundColor Yellow
+        } else {
+            Write-Host "`n[!] Error de Conexion: $msg" -ForegroundColor Red
+            Write-Host "Tip: Revisa utilidades\logs\gateway_error.log" -ForegroundColor Gray
+        }
+        Write-Host ""
+    }
 }
+
+# 8. CIERRE DE SERVICIOS
+Write-Host "`nCerrando servicios..." -ForegroundColor Yellow
+foreach ($id in $processIds) { 
+    Stop-Process -Id $id -ErrorAction SilentlyContinue 
+}
+docker compose down
+Write-Host "Adios!" -ForegroundColor Cyan

@@ -1,9 +1,5 @@
 # --- Entorno Virtual ---
-rag_venv/
-venv/
-.venv/
-__pycache__/
-*.pyc
+*rag_venv/
 
 # --- Base de Datos (Qdrant) ---
 qdrant_storage/
@@ -14,6 +10,7 @@ vector_service/db/
 # --- Documentos y Temporales ---
 *.pdf
 *.txt
+!utilidades\requirements.txt
 *.md
 /tmp/
 data/

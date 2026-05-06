@@ -8,12 +8,14 @@ import os
 
 app = Flask(__name__)
 
-QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+# --- Configuración de Qdrant ---
+QDRANT_HOST = os.getenv("QDRANT_HOST", "127.0.0.1")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 COLLECTION_NAME = "docs"
 VECTOR_SIZE = 384  # dimensiones de all-MiniLM-L6-v2
 
-client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+# Inicialización del cliente con un timeout de seguridad
+client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT, timeout=10)
 
 
 def ensure_collection():
@@ -116,6 +118,9 @@ def collections():
         "dimension": VECTOR_SIZE
     })
 
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ready"}), 200
 
 if __name__ == "__main__":
-    app.run(port=5001, debug=True)
+    app.run(host="127.0.0.1", port=5001, debug=False)

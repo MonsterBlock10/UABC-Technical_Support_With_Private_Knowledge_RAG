@@ -7,9 +7,10 @@ Sistema de Recuperación Aumentada por Generación (RAG) distribuido para consul
 ## Requisitos previos
 
 - Python 3.12.x
-- Docker
-- Ollama
+- Docker Desktop
 - Git
+
+> Ollama se instala automáticamente en Linux. En macOS y Windows ver sección de instalación.
 
 ---
 
@@ -26,7 +27,7 @@ O descarga el instalador desde: https://ollama.com/download
 **Windows:**
 Descarga e instala el `.exe` desde: https://ollama.com/download
 
-El script de inicio verificará si Ollama está instalado antes de continuar.
+---
 
 ## Instalación
 
@@ -39,7 +40,7 @@ cd UABC-Technical_Support_With_Private_Knowledge_RAG
 
 ### 2. Crear el entorno virtual
 
-Las rutas del proyecto están basadas en la máquina de desarrollo. Al clonar en una máquina nueva es necesario crear un entorno virtual propio, no reutilizar el de otra máquina.
+Al clonar en una máquina nueva es necesario crear un entorno virtual propio. Los scripts detectan automáticamente la ubicación del proyecto, pero el entorno virtual debe crearse manualmente la primera vez.
 
 **Linux / macOS:**
 ```bash
@@ -53,40 +54,37 @@ python -m venv rag_venv
 .\rag_venv\Scripts\Activate.ps1
 ```
 
-### 3. Instalar dependencias
+> En ejecuciones posteriores los scripts activan el entorno automáticamente.
 
-**Linux / macOS:**
+### 3. Dar permisos a los scripts (solo Linux / macOS)
+
+**Linux (Pop!_OS):**
 ```bash
-pip install -r utilidades/requirements.txt --break-system-packages
+chmod +x utilidades/linux/start_linux_pop.sh
+chmod +x utilidades/linux/stop_linux_pop.sh
+```
+
+**macOS:**
+```bash
+chmod +x utilidades/mac/start_macos.sh
+chmod +x utilidades/mac/stop_macos.sh
 ```
 
 **Windows:**
+En Windows no se usa `chmod`. Ejecuta PowerShell como administrador y habilita los scripts una sola vez:
 ```powershell
-pip install -r utilidades\requirements.txt
+Set-ExecutionPolicy RemoteSigned
 ```
 
-### 4. Dar permisos a los scripts (solo Linux / macOS)
+### 4. Descargar modelos de Ollama
 
-En Windows no aplica, los scripts `.ps1` no requieren este paso.
-
-```bash
-chmod +x utilidades/start_linux.sh
-chmod +x utilidades/stop_linux.sh
-
-# macOS
-chmod +x utilidades/start_macos.sh
-chmod +x utilidades/stop_macos.sh
-```
-
-### 5. Descargar modelo de Ollama
-
-El script de inicio descarga `gemma2:2b` automáticamente si no está presente. Si prefieres descargarlo manualmente:
+El script descarga `gemma2:2b` automáticamente si no está presente. Para descargarlo manualmente:
 
 ```bash
 ollama pull gemma2:2b
 ```
 
-Para usar el modelo de mayor calidad (requiere más recursos):
+Para el modelo de mayor calidad (requiere más recursos):
 ```bash
 ollama pull qwen2.5:14b
 ```
@@ -97,39 +95,40 @@ ollama pull qwen2.5:14b
 
 ### Iniciar el sistema
 
-El script levanta automáticamente Ollama, Qdrant y los 3 servicios Flask.
+El script levanta automáticamente Ollama, Qdrant, los 3 servicios Flask, ingesta los documentos de `docs/` y abre un loop interactivo de preguntas.
 
-**Linux:**
+**Linux (Pop!_OS):**
 ```bash
-./utilidades/start_linux.sh
+./utilidades/linux/start_linux_pop.sh
 ```
 
 **macOS:**
 ```bash
-./utilidades/start_macos.sh
+./utilidades/mac/start_macos.sh
 ```
 
 **Windows:**
 ```powershell
-.\utilidades\start_windows.ps1
+.\utilidades\windows\start_windows.ps1
 ```
 
-Al finalizar deberías ver:
+Al finalizar el arranque deberías ver:
+====================================================
+SISTEMA LISTO. Escribe 'salir' para terminar
+====================================================
+Pregunta:
 
-```json
-{
-    "services": {
-        "gateway": "ok",
-        "llm_service": "ok",
-        "vector_service": "ok"
-    },
-    "status": "ok"
-}
-```
+Durante el uso puedes:
+- Escribir cualquier pregunta para consultarla contra los documentos indexados
+- Escribir `fast` para cambiar al modelo gemma2:2b
+- Escribir `quality` para cambiar al modelo qwen2.5:14b
+- Escribir `salir` para cerrar el sistema
 
 ### Detener el sistema
 
-**Linux:**
+El sistema se apaga automáticamente al escribir `salir` en el loop de preguntas. Para forzar el cierre manualmente:
+
+**Linux (Pop!_OS):**
 ```bash
 ./utilidades/linux/stop_linux_pop.sh
 ```
@@ -147,6 +146,8 @@ Al finalizar deberías ver:
 ---
 
 ## Uso de la API
+
+El sistema también puede usarse directamente mediante su API REST sin necesidad del script interactivo.
 
 ### Ingestar un documento
 
@@ -206,70 +207,43 @@ Dashboard web disponible en: `http://localhost:6333/dashboard`
 ---
 
 ## Estructura del proyecto
-
-rag_project/
+UABC-Technical_Support_With_Private_Knowledge_RAG/
 ├── gateway/
-│   ├── app.py
-│   └── requirements.txt
+│   └── app.py
 ├── vector_service/
 │   ├── app.py
 │   ├── ingestor.py
-│   ├── embedder.py
-│   └── requirements.txt
+│   └── embedder.py
 ├── llm_service/
 │   ├── app.py
-│   ├── ollama_client.py
-│   └── requirements.txt
+│   └── ollama_client.py
 ├── docs/
-│   ├── manual_ejemplo.txt
-│   ├── guia_instalacion.md
-│   └── reporte_tecnico.pdf
+│   ├── oreos.txt
+│   └── neuronas.txt
 ├── utilidades/
-│   ├── requirements.txt
-    ├── linux
-│       ├── start_linux_pop.sh
-│       ├── stop_linux_pop.sh
-│   
-├── requirements.txt
-    ├── start_macos.sh
-│   ├── stop_macos.sh
-│   ├── start_windows.ps1
-│   └── stop_windows.ps1
+│   ├── linux/
+│   │   ├── start_linux_pop.sh
+│   │   └── stop_linux_pop.sh
+│   ├── mac/
+│   │   ├── start_macos.sh
+│   │   └── stop_macos.sh
+│   ├── windows/
+│   │   ├── start_windows.ps1
+│   │   └── stop_windows.ps1
+│   ├── logs/
+│   └── requirements.txt
 ├── docker-compose.yml
+├── .gitignore
 └── README.md
-
-
-## Permisos de ejecución de scripts
-
-Antes de ejecutar los scripts por primera vez es necesario otorgarles permisos de ejecución. Esto solo se hace una vez por máquina.
-
-**Linux (pop os):**
-```bash
-chmod +x utilidades/start_linux.sh
-chmod +x utilidades/stop_linux.sh
-```
-
-**macOS:**
-```bash
-chmod +x utilidades/start_macos.sh
-chmod +x utilidades/stop_macos.sh
-```
-
-**Windows:**
-En Windows no se usa `chmod`. Los scripts `.ps1` de PowerShell requieren que la política de ejecución esté habilitada. Ejecuta PowerShell como administrador y corre esto una sola vez:
-```powershell
-Set-ExecutionPolicy RemoteSigned
-```
-Después de eso los scripts `.ps1` se pueden ejecutar sin problema.
 
 ---
 
 ## Consideraciones
 
-- Las rutas en los scripts están basadas en la máquina de desarrollo. Al usar el proyecto en otra máquina es necesario ajustar `PROJECT_DIR` en el script correspondiente.
-- El flujo correcto es: levantar Qdrant → levantar servicios → ingestar documentos → hacer consultas. De no seguirse este orden el sistema no funcionará correctamente.
+- El flujo correcto es: levantar Qdrant → levantar servicios → ingestar documentos → hacer consultas. Los scripts manejan este orden automáticamente.
 - Los logs de cada servicio se guardan en `utilidades/logs/` para diagnóstico de errores.
-- `qwen2.5:14b` requiere al menos 16GB de RAM para correr con fluidez.
+- `qwen2.5:14b` requiere al menos 16GB de RAM para correr con fluidez. En equipos con menos recursos se recomienda usar `gemma2:2b`.
+- Los scripts detectan automáticamente la ruta del proyecto, por lo que funcionan en cualquier ubicación sin necesidad de modificarlos.
 
 ---
 
@@ -283,4 +257,3 @@ Después de eso los scripts `.ps1` se pueden ejecutar sin problema.
 | LLM local | Ollama — gemma2:2b / qwen2.5:14b |
 | Parseo de documentos | PyMuPDF |
 | Comunicación | HTTP/1.1 |
-Eso cubre todo lo que tenías en tu archivo original pero en formato README estándar. ¿Le cambias algo o está bien así?
